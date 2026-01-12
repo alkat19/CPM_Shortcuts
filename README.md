@@ -13,7 +13,7 @@ Internal-External Cross-Validation (IECV) implementation supporting multiple mod
 | Model | Engine | Description |
 |-------|--------|-------------|
 | `logistic` | glm | Standard logistic regression with interpretable coefficients |
-| `xgboost` | xgboost | Gradient boosted trees for potentially higher discrimination |
+| `xgboost` | xgboost | Gradient boosted trees |
 | `lightgbm` | lightgbm | Fast gradient boosted trees |
 
 ## Installation
