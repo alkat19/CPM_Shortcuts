@@ -201,12 +201,6 @@ See `demo/iecv_demo.qmd` for an interactive tutorial with:
 - Publication-quality figures
 - Interpretation guidance
 
-## References
-
-- Steyerberg EW, Harrell FE Jr. Prediction models need appropriate internal, internal-external, and external validation. *J Clin Epidemiol*. 2016;69:245-247.
-- Austin PC, et al. Geographic and temporal validity of prediction models: different approaches were useful to examine model performance. *J Clin Epidemiol*. 2016;79:76-85.
-- Debray TPA, et al. A new framework to enhance the interpretation of external validation studies of clinical prediction models. *J Clin Epidemiol*. 2015;68:279-289.
-
 ## License
 
 MIT License
