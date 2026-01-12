@@ -14,10 +14,11 @@ format:
       light: flatly
       dark: darkly
     highlight-style: github
-    fig-width: 9
+    fig-width: 11
     fig-height: 6
-    fig-dpi: 150
-    self-contained: true
+    fig-dpi: 120
+    embed-resources: false
+    page-layout: full
 execute:
   warning: false
   message: false
@@ -88,7 +89,7 @@ library(probably)
 library(dcurves)
 library(bonsai)
 library(cli)
-library(gridExtra)
+library(patchwork)
 
 # Load the IECV function
 source("../R/iecv_modelling.R")
@@ -175,12 +176,12 @@ summary(result_lr)
 
 ### Understanding the Metrics
 
-| Metric | Ideal Value | Interpretation |
-|--------|-------------|----------------|
-| **AUC** | > 0.7 | Discrimination - how well the model separates events from non-events |
-| **Brier Score** | < 0.25 | Overall accuracy - lower is better |
-| **Calibration Intercept** | 0 | Systematic bias - positive means underprediction |
-| **Calibration Slope** | 1 | < 1 indicates overfitting, > 1 underfitting |
+| Metric | Interpretation |
+|--------|----------------|
+| **AUC** | Discrimination - how well the model separates events from non-events |
+| **Brier Score** | Overall accuracy - lower is better |
+| **Calibration Intercept** | Systematic bias - positive means underprediction |
+| **Calibration Slope** | < 1 indicates overfitting, > 1 underfitting |
 
 ---
 
@@ -421,7 +422,7 @@ Let's compare calibration across all three models:
 ```{r}
 #| label: calibration-comparison
 #| fig-height: 5
-#| fig-width: 12
+#| fig-width: 14
 
 p1 <- plot(result_lr, type = "calibration") +
   labs(title = "Logistic Regression") +
@@ -435,16 +436,8 @@ p3 <- plot(result_lgb, type = "calibration") +
   labs(title = "LightGBM") +
   theme(legend.position = "none")
 
-gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
+p1 + p2 + p3 + plot_layout(ncol = 3)
 ```
-
-::: {.callout-tip}
-## Calibration vs Discrimination
-
-- **Logistic regression** typically has better calibration when the true relationship is linear
-- **Tree models** may have better discrimination but can have worse calibration
-- Always report **both** discrimination (AUC) and calibration metrics
-:::
 
 ---
 
@@ -453,7 +446,7 @@ gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
 ```{r}
 #| label: dca-comparison
 #| fig-height: 5
-#| fig-width: 12
+#| fig-width: 14
 
 d1 <- plot(result_lr, type = "dca") +
   labs(title = "Logistic Regression")
@@ -464,7 +457,7 @@ d2 <- plot(result_xgb, type = "dca") +
 d3 <- plot(result_lgb, type = "dca") +
   labs(title = "LightGBM")
 
-gridExtra::grid.arrange(d1, d2, d3, ncol = 3)
+d1 + d2 + d3 + plot_layout(ncol = 3)
 ```
 
 ---

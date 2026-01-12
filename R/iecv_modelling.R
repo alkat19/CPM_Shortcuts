@@ -701,7 +701,7 @@ plot_all_metrics <- function(x) {
   n_plots <- length(plots)
   ncol <- if (n_plots <= 2) n_plots else 2
 
-  gridExtra::grid.arrange(grobs = plots, ncol = ncol)
+  patchwork::wrap_plots(plots, ncol = ncol)
 }
 
 
@@ -786,6 +786,10 @@ plot_dca_pooled <- function(x, smooth = TRUE, ...) {
 #' Both XGBoost and LightGBM models use their native TreeSHAP implementations
 #' via the shapviz package, providing fast and exact SHAP value computation.
 #'
+#' Note: Due to how tidymodels encodes factor outcomes, the raw tree model
+#' predictions are for P("no"). SHAP values are automatically negated to
+#' represent contributions to P("yes") (the event of interest).
+#'
 #' @export
 get_shap <- function(x, n_samples = NULL) {
   assert_tree_model(x)
@@ -802,11 +806,20 @@ get_shap <- function(x, n_samples = NULL) {
   underlying_model <- workflows::extract_fit_parsnip(x$final_model)$fit
 
   if (x$model_type == "xgboost") {
-    shapviz::shapviz(underlying_model, X_pred = data.matrix(pred_data), X = pred_data)
+    shp <- shapviz::shapviz(underlying_model, X_pred = data.matrix(pred_data), X = pred_data)
   } else if (x$model_type == "lightgbm") {
-    # LightGBM also supports native TreeSHAP via shapviz
-    shapviz::shapviz(underlying_model, X_pred = data.matrix(pred_data), X = pred_data)
+    shp <- shapviz::shapviz(underlying_model, X_pred = data.matrix(pred_data), X = pred_data)
   }
+
+
+  # Negate SHAP values: tidymodels factor encoding causes raw model to predict
+
+  # P("no"), but we want SHAP values for P("yes") (the event of interest).
+  # Negating flips the direction so positive SHAP = higher event probability.
+  shp$S <- -shp$S
+  shp$baseline <- -shp$baseline
+
+  shp
 }
 
 
