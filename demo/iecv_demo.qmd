@@ -1,0 +1,551 @@
+---
+title: "Internal-External Cross-Validation Tutorial"
+subtitle: "A Practical Guide to Validating Clinical Prediction Models"
+author: "CPM_Shortcuts"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    code-fold: false
+    code-summary: "Show code"
+    theme:
+      light: flatly
+      dark: darkly
+    highlight-style: github
+    fig-width: 9
+    fig-height: 6
+    fig-dpi: 150
+    self-contained: true
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# Set global options
+knitr::opts_chunk$set(
+  fig.align = "center",
+  out.width = "100%"
+)
+```
+
+## Introduction
+
+Welcome to this interactive tutorial on **Internal-External Cross-Validation (IECV)** for clinical prediction models. This guide will walk you through:
+
+1. Understanding when and why to use IECV
+2. Running IECV with different model types
+3. Interpreting the results
+4. Creating publication-quality visualizations
+
+### What is IECV?
+
+Internal-External Cross-Validation is a validation strategy for prediction models developed using **multi-center or multi-study data**. Unlike standard cross-validation that randomly splits data, IECV leverages the natural clustering in your data (hospitals, studies, time periods) to provide more realistic performance estimates.
+
+::: {.callout-note}
+## When to use IECV
+
+IECV is ideal when:
+
+- You have data from multiple centers/hospitals
+- You want to estimate how well your model will perform at **new** centers
+- You need to assess model transportability across settings
+:::
+
+### The IECV Process
+
+```{mermaid}
+%%| fig-width: 8
+flowchart LR
+    A[Multi-center Data] --> B[Leave One Center Out]
+    B --> C[Train on N-1 Centers]
+    C --> D[Validate on Held-out Center]
+    D --> E[Repeat for Each Center]
+    E --> F[Pool Results]
+```
+
+Each center takes a turn being the "external" validation set, while the model is trained on all other centers. This mimics the real-world scenario of applying a model to a new hospital.
+
+---
+
+## Setup
+
+First, let's load the required packages and our IECV function.
+
+```{r}
+#| label: load-packages
+
+# Load required packages
+library(tidyverse)
+library(tidymodels)
+library(furrr)
+library(probably)
+library(dcurves)
+library(bonsai)
+library(cli)
+library(gridExtra)
+
+# Load the IECV function
+source("../R/iecv_modelling.R")
+```
+
+Now let's load our example dataset - simulated multi-center patient data.
+
+```{r}
+#| label: load-data
+
+# Load the dataset
+patient_data <- read_csv("../data/simulated_patient_data.csv")
+
+# Quick overview
+glimpse(patient_data)
+```
+
+```{r}
+#| label: data-summary
+
+# Check the distribution across centers
+patient_data %>%
+  group_by(center) %>%
+  summarise(
+    n_patients = n(),
+    n_events = sum(outcome),
+    event_rate = mean(outcome) * 100
+  ) %>%
+  arrange(center) %>%
+  knitr::kable(
+    col.names = c("Center", "Patients", "Events", "Event Rate (%)"),
+    digits = 1,
+    caption = "Distribution of patients and outcomes by center"
+  )
+```
+
+::: {.callout-tip}
+## Sample Size Considerations
+
+IECV requires at least **3 clusters** to function properly. More clusters provide more validation folds and more stable estimates. Each cluster should have enough events for reliable metric estimation.
+:::
+
+---
+
+## Running IECV: Logistic Regression
+
+Let's start with a logistic regression model - the workhorse of clinical prediction modeling.
+
+### Basic Usage
+
+```{r}
+#| label: iecv-logistic
+
+# Run IECV with logistic regression
+result_lr <- iecv_modelling(
+  data = patient_data,
+  outcome = "outcome",
+  predictors = c("age", "sex", "biomarker", "comorbidity"),
+  cluster = "center",
+  model = "logistic",
+  n_boot = 100,        # Bootstrap replicates for CIs
+  n_cores = 2,         # Parallel processing
+  verbose = TRUE       # Show progress
+)
+```
+
+### Viewing Results
+
+The `print()` method provides a quick summary:
+
+```{r}
+#| label: print-lr
+
+print(result_lr)
+```
+
+For more detailed output, use `summary()`:
+
+```{r}
+#| label: summary-lr
+
+summary(result_lr)
+```
+
+### Understanding the Metrics
+
+| Metric | Ideal Value | Interpretation |
+|--------|-------------|----------------|
+| **AUC** | > 0.7 | Discrimination - how well the model separates events from non-events |
+| **Brier Score** | < 0.25 | Overall accuracy - lower is better |
+| **Calibration Intercept** | 0 | Systematic bias - positive means underprediction |
+| **Calibration Slope** | 1 | < 1 indicates overfitting, > 1 underfitting |
+
+---
+
+## Visualization
+
+### Forest Plots
+
+Forest plots show performance across all validation centers, helping identify heterogeneity.
+
+```{r}
+#| label: forest-plot-all
+#| fig-height: 8
+
+# All metrics in one view
+plot(result_lr)
+```
+
+You can also plot individual metrics:
+
+```{r}
+#| label: forest-plot-auc
+#| fig-height: 5
+
+# Just AUC
+plot(result_lr, type = "auc")
+```
+
+### Calibration Plot
+
+Calibration shows how well predicted probabilities match observed outcomes.
+
+```{r}
+#| label: calibration-plot
+#| fig-height: 5
+
+plot(result_lr, type = "calibration")
+```
+
+::: {.callout-note}
+## Reading Calibration Plots
+
+- **Perfect calibration**: points follow the diagonal line
+- **Above the line**: model underpredicts risk
+- **Below the line**: model overpredicts risk
+- The **ribbon** shows 90% confidence interval
+:::
+
+### Decision Curve Analysis
+
+Decision curves help assess **clinical utility** - whether using the model improves decision-making compared to default strategies.
+
+```{r}
+#| label: dca-plot
+#| fig-height: 5
+
+plot(result_lr, type = "dca")
+```
+
+::: {.callout-tip}
+## Interpreting Decision Curves
+
+- **Net benefit > 0**: Using the model is better than treating no one
+- **Model above "Treat All"**: Using the model is better than treating everyone
+- The range of threshold probabilities where the model curve is highest indicates where it adds most value
+:::
+
+### Model Coefficients
+
+For logistic regression, we can extract interpretable odds ratios:
+
+```{r}
+#| label: coefficients-lr
+
+tidy_final_model(result_lr) %>%
+  knitr::kable(digits = 3, caption = "Logistic Regression Coefficients (Odds Ratios)")
+```
+
+---
+
+## Comparing Model Types
+
+One of the key features of `iecv_modelling()` is support for multiple model types. Let's compare logistic regression with gradient boosting models.
+
+### XGBoost
+
+```{r}
+#| label: iecv-xgboost
+
+result_xgb <- iecv_modelling(
+  data = patient_data,
+  outcome = "outcome",
+  predictors = c("age", "sex", "biomarker", "comorbidity"),
+  cluster = "center",
+  model = "xgboost",
+  n_boot = 100,
+  n_cores = 2,
+  verbose = TRUE
+)
+```
+
+### LightGBM
+
+```{r}
+#| label: iecv-lightgbm
+
+result_lgb <- iecv_modelling(
+  data = patient_data,
+  outcome = "outcome",
+  predictors = c("age", "sex", "biomarker", "comorbidity"),
+  cluster = "center",
+  model = "lightgbm",
+  n_boot = 100,
+  n_cores = 2,
+  verbose = TRUE
+)
+```
+
+### Performance Comparison
+
+```{r}
+#| label: comparison-table
+
+# Combine summaries
+comparison <- bind_rows(
+  result_lr$summary %>% mutate(model = "Logistic"),
+  result_xgb$summary %>% mutate(model = "XGBoost"),
+  result_lgb$summary %>% mutate(model = "LightGBM")
+) %>%
+  select(model, metric, mean, sd, min, max) %>%
+  arrange(metric, model)
+
+comparison %>%
+  knitr::kable(
+    digits = 3,
+    caption = "Model Comparison: Pooled Performance Across Validation Centers"
+  )
+```
+
+```{r}
+#| label: comparison-plot
+#| fig-height: 6
+
+# Visual comparison of AUC
+auc_comparison <- bind_rows(
+  result_lr$cluster_results %>%
+    select(id, auc, auc_lower, auc_upper) %>%
+    mutate(model = "Logistic"),
+  result_xgb$cluster_results %>%
+    select(id, auc, auc_lower, auc_upper) %>%
+    mutate(model = "XGBoost"),
+  result_lgb$cluster_results %>%
+    select(id, auc, auc_lower, auc_upper) %>%
+    mutate(model = "LightGBM")
+)
+
+ggplot(auc_comparison, aes(x = auc, y = id, color = model, shape = model)) +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_errorbar(
+    aes(xmin = auc_lower, xmax = auc_upper),
+    width = 0.2,
+    position = position_dodge(width = 0.5)
+  ) +
+  geom_vline(xintercept = 0.5, linetype = "dotted", color = "gray50") +
+  scale_color_manual(values = c("Logistic" = "#2E86AB", "XGBoost" = "#A23B72", "LightGBM" = "#F18F01")) +
+  labs(
+    x = "AUC (95% CI)",
+    y = "Validation Center",
+    title = "Model Comparison: AUC Across External Validations",
+    color = "Model",
+    shape = "Model"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+```
+
+---
+
+## SHAP Analysis for Tree Models
+
+For tree-based models (XGBoost, LightGBM), we can use SHAP (SHapley Additive exPlanations) to understand feature importance and effects.
+
+### SHAP Summary Plot
+
+```{r}
+#| label: shap-beeswarm
+#| fig-height: 5
+
+# SHAP beeswarm plot for XGBoost
+plot(result_xgb, type = "shap")
+```
+
+::: {.callout-note}
+## Reading SHAP Beeswarm Plots
+
+- Each dot represents a patient
+- **X-axis**: SHAP value (contribution to prediction)
+- **Color**: Feature value (red = high, blue = low)
+- Features are sorted by importance (top = most important)
+:::
+
+### Variable Importance
+
+```{r}
+#| label: var-importance
+
+# SHAP-based importance
+variable_importance(result_xgb) %>%
+  knitr::kable(digits = 3, caption = "Variable Importance (Mean |SHAP Value|)")
+```
+
+### SHAP Dependence Plots
+
+Dependence plots show how a specific feature affects predictions:
+
+```{r}
+#| label: shap-dependence-age
+#| fig-height: 5
+
+plot_shap_dependence(result_xgb, feature = "age")
+```
+
+```{r}
+#| label: shap-dependence-biomarker
+#| fig-height: 5
+
+plot_shap_dependence(result_xgb, feature = "biomarker")
+```
+
+---
+
+## Calibration Comparison
+
+Let's compare calibration across all three models:
+
+```{r}
+#| label: calibration-comparison
+#| fig-height: 5
+#| fig-width: 12
+
+p1 <- plot(result_lr, type = "calibration") +
+  labs(title = "Logistic Regression") +
+  theme(legend.position = "none")
+
+p2 <- plot(result_xgb, type = "calibration") +
+  labs(title = "XGBoost") +
+  theme(legend.position = "none")
+
+p3 <- plot(result_lgb, type = "calibration") +
+  labs(title = "LightGBM") +
+  theme(legend.position = "none")
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+::: {.callout-tip}
+## Calibration vs Discrimination
+
+- **Logistic regression** typically has better calibration when the true relationship is linear
+- **Tree models** may have better discrimination but can have worse calibration
+- Always report **both** discrimination (AUC) and calibration metrics
+:::
+
+---
+
+## DCA Comparison
+
+```{r}
+#| label: dca-comparison
+#| fig-height: 5
+#| fig-width: 12
+
+d1 <- plot(result_lr, type = "dca") +
+  labs(title = "Logistic Regression")
+
+d2 <- plot(result_xgb, type = "dca") +
+  labs(title = "XGBoost")
+
+d3 <- plot(result_lgb, type = "dca") +
+  labs(title = "LightGBM")
+
+gridExtra::grid.arrange(d1, d2, d3, ncol = 3)
+```
+
+---
+
+## Extracting Predictions
+
+You can access the out-of-fold predictions for further analysis:
+
+```{r}
+#| label: predictions
+
+# Get predictions
+preds <- result_lr$predictions
+
+head(preds, 10) %>%
+  knitr::kable(digits = 3, caption = "Sample Out-of-Fold Predictions")
+```
+
+These pooled out-of-fold predictions are useful for:
+
+- Custom calibration analyses
+- Threshold selection
+- Building calibration plots at specific risk strata
+
+---
+
+## Best Practices
+
+### 1. Sample Size
+
+- Ensure each cluster has sufficient events (ideally 20+)
+- More clusters = more stable estimates
+- Consider pooling small clusters if needed
+
+### 2. Bootstrap Replicates
+
+```r
+# For exploratory analysis
+n_boot = 50
+
+# For publication
+n_boot = 200
+```
+
+### 3. Model Selection
+
+| Scenario | Recommended Model |
+|----------|-------------------|
+| Interpretability needed | Logistic regression |
+| Complex non-linear relationships | XGBoost/LightGBM |
+| Small sample size | Logistic regression |
+| Large sample, many predictors | XGBoost/LightGBM |
+
+### 4. Reporting Checklist
+
+- [ ] Report all metrics (AUC, calibration, Brier)
+- [ ] Show per-cluster heterogeneity (forest plots)
+- [ ] Include calibration plot
+- [ ] Consider decision curve analysis for clinical context
+- [ ] Report confidence intervals
+
+---
+
+## Summary
+
+In this tutorial, you learned how to:
+
+1. **Run IECV** with `iecv_modelling()` for logistic regression, XGBoost, and LightGBM
+2. **Interpret metrics** including AUC, calibration, and Brier score
+3. **Visualize results** with forest plots, calibration curves, and decision curves
+4. **Compare models** to choose the best approach for your data
+5. **Use SHAP** to understand tree model predictions
+
+IECV provides a robust framework for validating clinical prediction models when you have multi-center data. By treating each center as an external validation, you get realistic estimates of how your model will perform in new settings.
+
+---
+
+## Session Info
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+```

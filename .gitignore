@@ -1,0 +1,25 @@
+# R files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Quarto outputs
+*.html
+*_files/
+*_cache/
+.quarto/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+~$*
