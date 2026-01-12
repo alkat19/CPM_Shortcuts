@@ -6,10 +6,13 @@
 *.Rproj
 
 # Quarto outputs
-*.html
+demo/*.html
 *_files/
 *_cache/
 .quarto/
+
+# Keep docs/ for GitHub Pages
+!docs/
 
 # OS files
 .DS_Store
