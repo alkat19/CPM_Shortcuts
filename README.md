@@ -2,6 +2,8 @@
 
 **Clinical Prediction Modeling Shortcuts** - R functions for automating clinical prediction model development and validation workflows.
 
+**[Interactive Tutorial](https://alkat19.github.io/CPM_Shortcuts/)**
+
 ## Overview
 
 This repository provides production-ready R functions that streamline common clinical prediction modeling tasks, with a focus on robust validation strategies for multi-center studies.
