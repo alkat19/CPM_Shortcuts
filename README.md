@@ -1,4 +1,4 @@
-# CPM_Shortcuts
+# CPM Shortcuts
 
 **Clinical Prediction Modeling Shortcuts** - R functions for automating clinical prediction model development and validation workflows.
 
